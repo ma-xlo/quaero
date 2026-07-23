@@ -25,3 +25,10 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# --- AI-DLC (AWS) ---
+# Committed (source of truth / shared workflow):
+#   AGENTS.md, CLAUDE.md, .aidlc-rule-details/, aidlc-docs/, docs/
+# Local-only (agent run state / secrets — never commit):
+.claude/settings.local.json
+
