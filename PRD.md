@@ -74,17 +74,18 @@ context retrieval. RAG + verifiable citations solves this.
 
 | Topic | Decision | Reason |
 |---|---|---|
-| Platform | **Tauri 2.x** (Rust backend + system WebView) | Small binary, native performance, cross-platform |
-| Frontend | **Vue 3 + TypeScript + Shadcn-vue + Tailwind CSS** | Modern reactive UI, headless component primitives |
-| Vector store | **SQLite + sqlite-vec** (embedded) | No external database; single-file, zero config |
+| Platform | **Electron** (Node.js main process + bundled Chromium renderer) | Mature desktop ecosystem, consistent rendering across OSes (no WebView fragmentation) |
+| Frontend | **React 19 + TypeScript + Shadcn/ui + Tailwind CSS** | Original Shadcn primitives, large component library, large talent pool |
+| Vector store | **SQLite + sqlite-vec** (embedded via `better-sqlite3`) | No external database; single-file, zero config |
 | Embeddings | **Ollama + `bge-m3`** (local, 1024 dims) | Free, CPU, multilingual PT-BR |
-| Chat LLM | **Configurable `LLMProvider`**: GLM-5.1 (remote API) or Ollama (local) | Flexibility without over-engineering |
-| PDF parsing | **`pdf-extract`** (pure Rust, per-page) | No system deps, native Tauri integration |
-| Processing | **Async** (background task, non-blocking UI) | Desktop UX demands responsive UI during ingestion |
+| Chat LLM | **Configurable `LlmProvider`**: GLM-5.1 (remote API) or Ollama (local) | Flexibility without over-engineering |
+| PDF parsing | **`pdfjs-dist`** (Mozilla pdf.js, per-page text extraction) | Robust on complex layouts (tables/columns), well-maintained, no system deps |
+| Processing | **Async** (main-process worker, non-blocking renderer) | Desktop UX demands responsive UI during ingestion |
 | Auth | **No auth, single-user** | Focus on the RAG core |
-| Distribution | **Tauri bundler** (`.dmg` / `.msi` / `.AppImage`) | Built-in cross-platform packaging |
+| Distribution | **electron-builder** (`.dmg` / `.msi` / `.AppImage`) | De-facto cross-platform packaging for Electron |
 | Citations | **Persisted** per message | Traceability survives restart |
-| State management | **Pinia** | Vue 3 standard, TypeScript-first |
+| State management | **Zustand** | Minimal, hook-based, TypeScript-first |
+| Routing | **React Router v7** | Standard, type-safe, mature data router |
 
 ---
 
@@ -98,7 +99,7 @@ context retrieval. RAG + verifiable citations solves this.
 
 ### Processing (async, on upload)
 
-1. Text extraction **per page** (`pdf-extract` — required for citation).
+1. Text extraction **per page** (`pdfjs-dist` — required for citation).
 2. Chunking (see **Chunking Strategy** below).
 3. Embedding of each chunk via Ollama (`bge-m3`, 1024 dims).
 4. Storage in `document_chunks.embedding` (sqlite-vec, `float32(1024)`).
@@ -151,7 +152,7 @@ Contract.pdf — Page 18
 List previous messages; continue an existing conversation. A conversation references N
 docs.
 
-### Frontend (Vue 3)
+### Frontend (React)
 
 #### Documents Screen
 
@@ -178,7 +179,7 @@ docs.
 #### Theme
 
 - Light / dark / system theme toggle. Persisted to local storage.
-- FOUC-free boot (theme applied before Vue hydration).
+- FOUC-free boot (theme applied before React hydration).
 
 ---
 
@@ -191,7 +192,7 @@ docs.
 - Export (Markdown/PDF/DOCX); structured automatic summarization.
 - In-process embeddings (ONNX — no external Ollama dependency).
 - Configurable / multi-model embedding (different dimensions).
-- Auto-update via Tauri's updater plugin.
+- Auto-update via `electron-updater`.
 
 ---
 
@@ -199,24 +200,26 @@ docs.
 
 ```text
 ┌─────────────────────────────────────────────────────┐
-│  Vue 3 + Shadcn-vue + Tailwind CSS + Pinia          │
-│  (rendered in system WebView via Tauri)              │
+│  React 19 + Shadcn/ui + Tailwind CSS + Zustand      │
+│  (rendered in bundled Chromium via Electron)         │
 └───────────────────────┬─────────────────────────────┘
-                        │ Tauri IPC (invoke / events)
+                        │ Electron IPC
+                        │ (ipcRenderer.invoke / Main→Renderer events
+                        │  via contextBridge-typed API)
 ┌───────────────────────▼─────────────────────────────┐
-│  Rust Backend (Tauri Commands)                       │
+│  Node.js Main Process (Electron)                     │
 │  ├─ Document Service                                 │
-│  │   ├─ PDF Parser (pdf-extract, per page)           │
+│  │   ├─ PDF Parser (pdfjs-dist, per page)            │
 │  │   ├─ Chunker (fixed + overlap)                    │
 │  │   └─ Embedding Client ───► Ollama (bge-m3) [HTTP] │
 │  ├─ Chat Service (RAG)                               │
 │  │   ├─ Embedding Client ───► Ollama (bge-m3)        │
 │  │   ├─ Retriever ──────────► sqlite-vec (cosine)     │
 │  │   ├─ Prompt Builder                                │
-│  │   └─ LLMProvider ────────► GLM-5.1 (remote)       │
+│  │   └─ LlmProvider ────────► GLM-5.1 (remote)       │
 │  │                          └─► Ollama (local)        │
-│  ├─ Vector Store (sqlite-vec via rusqlite)            │
-│  └─ SQLite (rusqlite, single-file DB)                │
+│  ├─ Vector Store (sqlite-vec via better-sqlite3)      │
+│  └─ SQLite (better-sqlite3, single-file DB)           │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -231,17 +234,17 @@ External dependency (user runs locally):
 
 | Layer | Technology |
 |---|---|
-| Desktop shell | **Tauri 2.x** (Rust) |
-| Frontend | **Vue 3** + **TypeScript** + **Vite** |
-| UI components | **Shadcn-vue** + **Tailwind CSS** |
-| State management | **Pinia** |
-| Routing | **Vue Router** |
-| PDF parsing | **`pdf-extract`** (Rust, lopdf-based) |
+| Desktop shell | **Electron** (Node.js main process + Chromium renderer) |
+| Frontend | **React 19** + **TypeScript** + **Vite** (via `electron-vite`) |
+| UI components | **Shadcn/ui** + **Tailwind CSS** |
+| State management | **Zustand** |
+| Routing | **React Router v7** |
+| PDF parsing | **`pdfjs-dist`** (Mozilla pdf.js, per-page text extraction) |
 | Embeddings | **Ollama + `bge-m3`** (HTTP, 1024 dims) |
-| Vector store | **SQLite + sqlite-vec** (embedded via `rusqlite`) |
-| LLM | **`LLMProvider` trait**: GLM-5.1 (reqwest HTTP) or Ollama |
-| Validation | **Zod** (frontend response schemas) |
-| Build/bundle | **Tauri CLI** (`cargo tauri build`) |
+| Vector store | **SQLite + sqlite-vec** (embedded via `better-sqlite3`) |
+| LLM | **`LlmProvider` interface**: GLM-5.1 (fetch HTTP) or Ollama |
+| Validation | **Zod** (renderer response schemas) |
+| Build/bundle | **electron-vite** + **electron-builder** (`npm run build`) |
 
 ---
 
@@ -313,37 +316,43 @@ message_citations (
 - On app start, compare current schema version with code version.
 - Apply sequential migrations in a transaction.
 - No rollback — forward-only migrations (SQLite limitation).
-- Migrations are inline Rust functions in `db/migrations.rs`, not SQL files.
+- Migrations are inline TypeScript functions in `electron/main/db/migrations.ts`, not SQL files.
 
 ---
 
-## 10. Tauri IPC Contracts
+## 10. Electron IPC Contracts
 
-All backend operations exposed as **Tauri commands** (invoked from Vue via `invoke()`).
+All backend operations exposed as **Electron IPC handlers** registered in the main
+process (`ipcMain.handle`) and invoked from the renderer through a typed
+`contextBridge` API (`window.api.<command>(...)`).
 
 | Command | Direction | Description |
 |---|---|---|
-| `upload_documents` | Vue → Rust | Accept file paths from native dialog/drop; validate; insert as `processing`; spawn background processing |
-| `list_documents` | Vue → Rust | Return all documents with status |
-| `get_document` | Vue → Rust | Single document detail |
-| `rename_document` | Vue → Rust | Update display filename |
-| `delete_document` | Vue → Rust | Cascade delete (chunks, links, citations) in transaction |
-| `list_conversations` | Vue → Rust | Return all conversations |
-| `get_conversation` | Vue → Rust | Conversation detail with documents, messages, citations |
-| `create_conversation` | Vue → Rust | Create conversation, optionally associate documents |
-| `associate_documents` | Vue → Rust | Add documents to a conversation |
-| `send_message` | Vue → Rust | RAG pipeline: embed → retrieve → prompt → LLM → persist → return with citations |
-| `get_config` | Vue → Rust | Read current settings (LLM provider, Ollama URL, etc.) |
-| `update_config` | Vue → Rust | Persist settings |
-| `check_health` | Vue → Rust | Verify Ollama connectivity + DB status |
+| `upload_documents` | Renderer → Main | Accept file paths from native dialog/drop; validate; insert as `processing`; spawn background processing |
+| `list_documents` | Renderer → Main | Return all documents with status |
+| `get_document` | Renderer → Main | Single document detail |
+| `rename_document` | Renderer → Main | Update display filename |
+| `delete_document` | Renderer → Main | Cascade delete (chunks, links, citations) in transaction |
+| `list_conversations` | Renderer → Main | Return all conversations |
+| `get_conversation` | Renderer → Main | Conversation detail with documents, messages, citations |
+| `create_conversation` | Renderer → Main | Create conversation, optionally associate documents |
+| `associate_documents` | Renderer → Main | Add documents to a conversation |
+| `send_message` | Renderer → Main | RAG pipeline: embed → retrieve → prompt → LLM → persist → return with citations |
+| `get_config` | Renderer → Main | Read current settings (LLM provider, Ollama URL, etc.) |
+| `update_config` | Renderer → Main | Persist settings |
+| `check_health` | Renderer → Main | Verify Ollama connectivity + DB status |
 
-### Async events (Rust → Vue)
+### Async events (Main → Renderer)
 
 | Event | Payload | When |
 |---|---|---|
 | `document:processing` | `{ documentId, status }` | Document status changes during processing |
 | `document:ready` | `{ documentId }` | Processing complete |
 | `document:failed` | `{ documentId, errorCode, errorMessage }` | Processing failed |
+
+> Events are pushed from the main process via `webContents.send(...)` and exposed to
+> React through a typed `window.api.onDocumentEvent(callback)` subscription API
+> (cleaned up via the returned disposer to avoid renderer-side leaks).
 
 ---
 
@@ -397,99 +406,111 @@ When no chunks pass the similarity threshold (cosine distance > 0.5 — configur
 
 ## 11. LLM Provider Abstraction
 
-```rust
-#[async_trait]
-trait LlmProvider: Send + Sync {
-    async fn chat(&self, messages: Vec<ChatMessage>) -> Result<String, LlmError>;
-    fn name(&self) -> &str;
+```typescript
+// electron/main/services/llm-provider.ts
+
+interface LlmProvider {
+  readonly name: string;
+  chat(messages: ChatMessage[]): Promise<Result<string, LlmError>>;
 }
 
-struct GlmProvider {
-    api_url: String,
-    api_key: String,
-    model: String,
+class GlmProvider implements LlmProvider {
+  readonly name = "glm-5.1";
+  constructor(
+    private readonly apiUrl: string,
+    private readonly apiKey: string,
+    private readonly model: string,
+  ) {}
+  async chat(messages: ChatMessage[]): Promise<Result<string, LlmError>> { /* fetch ... */ }
 }
 
-struct OllamaChatProvider {
-    url: String,
-    model: String,
+class OllamaChatProvider implements LlmProvider {
+  readonly name = "ollama";
+  constructor(
+    private readonly url: string,
+    private readonly model: string,
+  ) {}
+  async chat(messages: ChatMessage[]): Promise<Result<string, LlmError>> { /* fetch ... */ }
 }
 ```
 
-Configurable via settings UI (persisted to a local config file, e.g. TOML or JSON).
+Configurable via settings UI (persisted to a local config file, e.g. JSON at
+`app.getPath('userData')`).
 
 ---
 
 ## 12. Folder Layout
 
 ```
-src-tauri/                    # Rust backend (Tauri)
-  src/
-    main.rs                   # Tauri entry
-    lib.rs                    # Command registration
-    commands/
-      documents.rs            # Document CRUD + upload commands
-      conversations.rs        # Conversation + chat commands
-      config.rs               # Settings commands
-      health.rs               # Health check
+electron/                       # Electron main process (Node.js)
+  main/
+    index.ts                    # Electron entry: app lifecycle, BrowserWindow, single-instance lock
+    ipc/
+      register.ts               # Registers all ipcMain.handle handlers
+      documents.ts              # Document CRUD + upload IPC handlers
+      conversations.ts          # Conversation + chat IPC handlers
+      config.ts                 # Settings IPC handlers
+      health.ts                 # Health check IPC handler
     services/
-      document_service.rs     # Upload, parse, chunk, embed orchestration
-      embedding_client.rs     # HTTP client to Ollama (bge-m3)
-      chat_service.rs         # RAG pipeline orchestrator
-      retriever.rs            # Embed question → cosine search → top-K
-      prompt_builder.rs       # System prompt + context + history + question
-      llm_provider.rs         # LlmProvider trait + GLM + Ollama impls
+      document-service.ts       # Upload, parse, chunk, embed orchestration
+      embedding-client.ts       # HTTP client to Ollama (bge-m3)
+      chat-service.ts           # RAG pipeline orchestrator
+      retriever.ts              # Embed question → cosine search → top-K
+      prompt-builder.ts         # System prompt + context + history + question
+      llm-provider.ts           # LlmProvider interface + GLM + Ollama impls
     db/
-      schema.rs               # Table definitions (rusqlite)
-      client.rs               # Connection pool, init, pragmas
-      migrations.rs           # Inline migrations (or bundled SQL files)
+      schema.ts                 # Table definitions (better-sqlite3)
+      client.ts                 # Connection, init, pragmas, sqlite-vec load
+      migrations.ts             # Inline migrations (or bundled SQL files)
     config/
-      settings.rs             # Typed config loader + persistence
-  Cargo.toml
-  tauri.conf.json
+      settings.ts               # Typed config loader + persistence (JSON)
+  preload/
+    index.ts                    # contextBridge.exposeInMainWorld('api', ...) typed API
+  electron-builder.yml          # Bundle config (.dmg / .msi / .AppImage)
+  tsconfig.json
 
-src/                          # Vue frontend
-  main.ts                     # Vue entry
-  App.vue                     # Root component + router + Pinia
-  style.css                   # Tailwind directives + Shadcn CSS vars
+src/                            # React renderer
+  main.tsx                      # React entry (createRoot)
+  App.tsx                       # Root component + router + providers
+  index.css                     # Tailwind directives + Shadcn CSS vars
   router/
-    index.ts                  # Vue Router config
+    index.tsx                   # React Router v7 config (data router)
   stores/
-    documents.ts              # Pinia store for documents
-    conversations.ts          # Pinia store for conversations + chat
-    settings.ts               # Pinia store for app settings
-    theme.ts                  # Theme state (light/dark/system)
+    documents-store.ts          # Zustand store for documents
+    conversations-store.ts      # Zustand store for conversations + chat
+    settings-store.ts           # Zustand store for app settings
+    theme-store.ts              # Theme state (light/dark/system)
   lib/
-    tauri-api.ts              # Typed wrappers around invoke() + Zod validation
+    electron-api.ts             # Typed wrappers around window.api + Zod validation
   schemas/
-    document.schema.ts        # Zod schemas for document shapes
-    conversation.schema.ts    # Zod schemas for conversation/message/citation shapes
+    document.schema.ts          # Zod schemas for document shapes
+    conversation.schema.ts      # Zod schemas for conversation/message/citation shapes
   components/
-    ui/                       # Shadcn-vue primitives
+    ui/                         # Shadcn/ui primitives
     layout/
-      AppLayout.vue           # Sidebar + main content shell
-      Sidebar.vue             # Navigation sidebar + theme toggle
+      AppLayout.tsx             # Sidebar + main content shell
+      Sidebar.tsx               # Navigation sidebar + theme toggle
     documents/
-      DropZone.vue            # Drag-and-drop + native file picker
-      DocumentList.vue        # Table with status badges + actions
-      DocumentActions.vue     # Rename/delete per row
+      DropZone.tsx              # Drag-and-drop + native file picker
+      DocumentList.tsx          # Table with status badges + actions
+      DocumentActions.tsx       # Rename/delete per row
     conversations/
-      ConversationList.vue    # List of conversation cards
-      CreateConversationDialog.vue  # Title + document selector
+      ConversationList.tsx      # List of conversation cards
+      CreateConversationDialog.tsx  # Title + document selector
     chat/
-      MessageList.vue         # Scrollable messages + auto-scroll + suggested prompts
-      MessageBubble.vue       # User or assistant message
-      MarkdownMessage.vue     # Markdown renderer (markdown-it or similar)
-      CitationCard.vue        # Expandable citation (doc + page + snippet)
-      DocumentPanel.vue       # Sidebar showing associated documents
-      ChatInput.vue           # Multi-line input + send
+      MessageList.tsx           # Scrollable messages + auto-scroll + suggested prompts
+      MessageBubble.tsx         # User or assistant message
+      MarkdownMessage.tsx       # Markdown renderer (react-markdown or similar)
+      CitationCard.tsx          # Expandable citation (doc + page + snippet)
+      DocumentPanel.tsx         # Sidebar showing associated documents
+      ChatInput.tsx             # Multi-line input + send
     theme/
-      ThemeToggle.vue         # Light/dark/system dropdown
+      ThemeToggle.tsx           # Light/dark/system dropdown
   views/
-    DocumentsView.vue         # Documents page
-    ConversationsView.vue     # Conversations list page
-    ChatView.vue              # Chat interface for a conversation
-    SettingsView.vue          # LLM provider config + Ollama URL
+    DocumentsView.tsx           # Documents page
+    ConversationsView.tsx       # Conversations list page
+    ChatView.tsx                # Chat interface for a conversation
+    SettingsView.tsx            # LLM provider config + Ollama URL
 ```
 
 ---
@@ -513,9 +534,11 @@ src/                          # Vue frontend
 
 - Native file dialogs for PDF selection.
 - Drag-and-drop onto the application window.
-- Single-instance (Tauri plugin prevents multiple instances).
-- Application data stored in OS-standard directory (`app_data_dir`).
+- Single-instance (Electron `app.requestSingleInstanceLock()`).
+- Application data stored in OS-standard directory (`app.getPath('userData')`).
 - Database file stored alongside config in app data directory.
+- Context isolation **on**, `nodeIntegration` **off**, all main-process access
+  mediated through a typed `contextBridge` API (security best practice).
 
 ### Cross-platform
 
@@ -532,9 +555,9 @@ src/                          # Vue frontend
 | Ollama unreachable (embed) | HTTP connection refused/timeout on embedding request | "Ollama is not running. Please start Ollama and ensure `bge-m3` is pulled (`ollama pull bge-m3`)." | Document status → `failed` with `error_code = "OLLAMA_UNREACHABLE"`. Retry on next upload or health check. |
 | LLM API timeout | HTTP timeout after configurable threshold (default 30 s) | "The LLM service timed out. Please try again or check your connection." | Message still saved with error state. User can retry. |
 | LLM API auth failure | HTTP 401/403 | "API key is invalid. Please check your settings." | No retry. Direct user to Settings. |
-| Corrupt/encrypted PDF | `pdf-extract` returns error or empty output | "This PDF could not be processed. It may be encrypted or corrupted." | Document status → `failed`. No retry. |
+| Corrupt/encrypted PDF | `pdfjs-dist` returns error or empty output | "This PDF could not be processed. It may be encrypted or corrupted." | Document status → `failed`. No retry. |
 | PDF exceeds limits | Size > 200 MB or pages > 1000 (checked before processing) | "This PDF exceeds the limit (200 MB / 1000 pages)." | Rejected before processing. No DB entry. |
-| SQLite write failure | `rusqlite` returns error on insert/update | "A database error occurred. Please restart the application." | Log full error. App continues if possible. |
+| SQLite write failure | `better-sqlite3` throws on `prepare`/`run` | "A database error occurred. Please restart the application." | Log full error. App continues if possible. |
 | Disk space low | Check before large operations (heuristic) | "Not enough disk space to process this document." | Reject gracefully. |
 
 ### Retry Policy
@@ -555,7 +578,7 @@ src/                          # Vue frontend
 | Processing failure rate | ≤ 1% for valid PDFs under limits | (failed documents / total uploaded) × 100 |
 | Citation accuracy | ≥ 95% correct doc + page on benchmark set | 20-question benchmark across 3 PDF types |
 | RAG retrieval recall | ≥ 90% Recall@5 on benchmark | Ground-truth chunks identified per question |
-| App cold start | ≤ 3 s to interactive | Timed from launch to DocumentsView rendered |
+| App cold start | ≤ 5 s to interactive (Electron-inflated baseline) | Timed from launch to DocumentsView rendered |
 
 ### Qualitative
 
@@ -575,10 +598,13 @@ src/                          # Vue frontend
 
 - Complete RAG pipeline with vector search in a **self-contained desktop app**.
 - Embedded vector store (sqlite-vec) — no external database process.
-- Rust backend — memory-safe, high performance, small binary.
+- **Consistent cross-platform rendering** via bundled Chromium (no system-WebView
+  fragmentation between macOS/Windows/Linux).
+- **Mature Node.js + React ecosystem** — large talent pool, abundant libraries,
+  first-class Shadcn/ui component source.
 - Configurable LLM provider (remote API or local Ollama).
 - Verifiable and persisted citations (traceability).
-- Cross-platform distribution via Tauri.
+- Cross-platform distribution via Electron (`.dmg` / `.msi` / `.AppImage`).
 - 100% local / zero cost.
 
 ---
@@ -589,7 +615,7 @@ src/                          # Vue frontend
 |---|---|---|---|
 | Ollama | External service | Yes (embeddings) | User must install + pull `bge-m3` |
 | GLM-5.1 | Remote API | Optional (chat) | Only if using remote LLM provider |
-| System WebView | OS-provided | Yes | Tauri uses the system's WebView |
+| Chromium | Bundled with Electron | Yes | Consistent rendering across OSes (no system WebView dependency) |
 
 ---
 
@@ -597,12 +623,13 @@ src/                          # Vue frontend
 
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
-| `pdf-extract` produces poor output on complex PDFs (tables, columns, images) | High — answers based on garbled text | Medium | Validate with 5 diverse PDFs in Bolt 1. If quality < 90%, switch to `pdfium-render` (bundled pdfium binary). |
-| sqlite-vec immaturity (API changes, bugs) | Medium — vector search breaks | Low-Medium | Pin exact sqlite-vec version in `Cargo.toml`. Test cosine search in Bolt 1. |
+| `pdfjs-dist` produces poor output on edge-case PDFs (rare — pdf.js is the de-facto standard renderer) | High — answers based on garbled text | Low | pdf.js is robust on tables/columns. Validate with 5 diverse PDFs in Bolt 1. If a problematic PDF appears, try alternative rendering flags (e.g. `disableFontFace`, `useSystemFonts`) before falling back. |
+| sqlite-vec Node bindings immaturity (npm `sqlite-vec`, loadable extension) | Medium — vector search breaks | Low-Medium | Pin exact `sqlite-vec` version in `package.json`. Load extension at startup via `db.loadExtension(...)`. Test cosine search in Bolt 1. |
 | Ollama as hard external dependency | Medium — users may not have it installed | High | Health check on app start. Clear error message with install instructions. Future: in-process ONNX embeddings. |
-| Large binary size (Rust + SQLite + pdfium fallback) | Low — download size | Medium | Target < 30 MB without pdfium. Monitor with `cargo bloat`. |
+| Large binary size (Chromium runtime + SQLite + pdf.js ≈ 100–150 MB) | Low — download size, accepted tradeoff | High (certain) | Accepted as inherent to Electron. No mitigation — communicate size in README. Removed from §15 differentiators. |
+| Electron memory footprint (~200–400 MB RAM) | Low — desktop-class, accepted | High (certain) | Accepted. Mitigation: lazy-load heavy services (PDF parser, embedder) in the main process; avoid renderer-side retention of large blobs. |
 | LLM hallucination despite grounding prompt | High — incorrect answers presented as fact | Medium | Strict prompt engineering. Refusal when no relevant context. Citation validation: every citation must resolve to an actual chunk in DB. |
-| Single-threaded embedding bottleneck | Low — slow processing for large documents | High | Parallel embedding with configurable concurrency (default 8). Async from day one. |
+| Single-threaded embedding bottleneck | Low — slow processing for large documents | High | Worker thread (`worker_threads`) for embedding with configurable concurrency (default 8). Off-main-thread so renderer stays responsive. |
 
 ---
 
@@ -610,7 +637,7 @@ src/                          # Vue frontend
 
 | # | Question | Owner | Deadline | Default if unresolved |
 |---|---|---|---|---|
-| OQ-1 | `pdf-extract` extraction quality on complex PDFs (tables, columns). Need validation. | Developer | End of Bolt 1 | Stick with `pdf-extract`; document known limitations. |
+| OQ-1 | `pdfjs-dist` extraction quality on edge-case PDFs (rare tables/columns). Need validation. | Developer | End of Bolt 1 | Stick with `pdfjs-dist` (standard, robust); document known limitations + tune extraction flags if needed. |
 | OQ-2 | Should the app auto-detect Ollama + prompt `bge-m3` download, or document as prerequisite? | Stakeholder | Before Bolt 1 spec approval | Document as prerequisite in README + health check error message. |
 | OQ-3 | Code signing (Apple notarization, Windows cert) for distribution. | Stakeholder | Post-v1 | Unsigned builds initially. |
 | OQ-4 | Chunk size tuning: character-based vs token-based splitting. Evaluate after Bolt 2. | Developer | End of Bolt 2 | Character-based (512 chars) for v1. |

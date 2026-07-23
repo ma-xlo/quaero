@@ -1,10 +1,10 @@
 # Dependencies
 node_modules/
-target/
 
 # Build output
 dist/
-src-tauri/target/
+dist-electron/
+out/                        # electron-builder output
 
 # Environment
 .env
